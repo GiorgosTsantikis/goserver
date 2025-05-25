@@ -48,6 +48,104 @@ func (q *Queries) CreateFeed(ctx context.Context, arg CreateFeedParams) (Feed, e
 	return i, err
 }
 
+const createFollowsFeed = `-- name: CreateFollowsFeed :one
+INSERT INTO feed_follows (id, created_at, updated_at, user_id, feed_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, created_at, updated_at, user_id, feed_id
+`
+
+type CreateFollowsFeedParams struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	UserID    uuid.UUID
+	FeedID    uuid.UUID
+}
+
+func (q *Queries) CreateFollowsFeed(ctx context.Context, arg CreateFollowsFeedParams) (FeedFollow, error) {
+	row := q.db.QueryRowContext(ctx, createFollowsFeed,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.UserID,
+		arg.FeedID,
+	)
+	var i FeedFollow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.UserID,
+		&i.FeedID,
+	)
+	return i, err
+}
+
+const deleteFeedFollows = `-- name: DeleteFeedFollows :exec
+DELETE FROM feed_follows WHERE user_id = $1 AND feed_id = $2
+`
+
+type DeleteFeedFollowsParams struct {
+	UserID uuid.UUID
+	FeedID uuid.UUID
+}
+
+func (q *Queries) DeleteFeedFollows(ctx context.Context, arg DeleteFeedFollowsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteFeedFollows, arg.UserID, arg.FeedID)
+	return err
+}
+
+const getFeedByURL = `-- name: GetFeedByURL :one
+SELECT id, created_at, updated_at, name, url, user_id FROM feeds WHERE url=$1
+`
+
+func (q *Queries) GetFeedByURL(ctx context.Context, url string) (Feed, error) {
+	row := q.db.QueryRowContext(ctx, getFeedByURL, url)
+	var i Feed
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+		&i.Url,
+		&i.UserID,
+	)
+	return i, err
+}
+
+const getFeedFollows = `-- name: GetFeedFollows :many
+SELECT id, created_at, updated_at, user_id, feed_id FROM feed_follows WHERE user_id = $1
+`
+
+func (q *Queries) GetFeedFollows(ctx context.Context, userID uuid.UUID) ([]FeedFollow, error) {
+	rows, err := q.db.QueryContext(ctx, getFeedFollows, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FeedFollow
+	for rows.Next() {
+		var i FeedFollow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UserID,
+			&i.FeedID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFeeds = `-- name: GetFeeds :many
 SELECT id, created_at, updated_at, name, url, user_id FROM feeds
 `
