@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 	"untitled/internal/database"
 )
 
@@ -18,7 +19,6 @@ type apiConfig struct {
 }
 
 func main() {
-	fmt.Println("Hello World")
 
 	godotenv.Load(".env")
 	portString := os.Getenv("PORT")
@@ -48,9 +48,12 @@ func main() {
 		log.Fatal("Cannot connect to DB")
 	}
 
+	db := database.New(conn)
 	apiCfg := apiConfig{
-		DB: database.New(conn),
+		DB: db,
 	}
+
+	go startScraping(db, 10, time.Minute)
 
 	v1Router := chi.NewRouter()
 	v1Router.Get("/healthz", handlerReadiness)
@@ -62,6 +65,7 @@ func main() {
 	v1Router.Post("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerFeedFollows))
 	v1Router.Get("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerGetFeedFollows))
 	v1Router.Delete("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerDeleteFeedFollows))
+	v1Router.Get("/posts", apiCfg.middlewareAuth(apiCfg.handlerGetPostsForUser))
 	router.Mount("/v1", v1Router)
 
 	srv := &http.Server{
